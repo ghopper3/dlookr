@@ -1,0 +1,217 @@
+---
+title: "dlookr demo"
+output: html_notebook
+---
+
+Install dlookr in r:
+
+```{r}
+#install.packages("dlookr")
+# If you haven't already installed dplyr, do that now, as we will use dplyr in conjunction with 
+# install.packages("dplyr")
+```
+
+Bring dlookr and dplyr into memory by calling the libraries:
+
+```{r}
+library(dplyr)
+library(dlookr)
+```
+
+Load in your data:
+
+(We'll be using the Ames training data from Kaggle for this example.)
+
+```{r}
+load("ames_train.Rdata")
+```
+
+Let's take a look at our dataset:
+
+```{r}
+dim(ames_train)
+names(ames_train)
+head(ames_train)
+```
+
+The codebook for the data is saved as "ames_data_codebook.txt"
+
+***
+#Data Quality Diagnosis
+
+Now let's dive into dlookr to diagnose our data quality:
+
+* diagnose() allows you to diagnosis a variables in a data frame. Like function of dplyr, the first argument is the tibble (or data frame). The second and subsequent arguments refer to variables within that data frame.
+* diagnose_category() provides detailed diagnostic information for categorical variables.
+* diagnose_numeric() provides detailed diagnostic information for numeric variables.
+* diagnose_outlier() and plot_outlier() provide information and visualization of outliers.
+
+The variables of the tbl_df object returned by diagnose () are as follows.
+
+* variables : variable name
+* types : the data type of the variable
+* missing_count : number of missing values
+* missing_percent : percentage of missing values
+* unique_count : number of unique values
+* unique_rate : rate of unique value. unique_count / number of observation
+
+```{r}
+diagnose(ames_train)
+```
+
+By using dplyr, variables including missing values can be sorted by the weight of missing values.:
+
+```{r}
+ames_train %>%
+  diagnose() %>%
+  select(-unique_count, -unique_rate) %>% 
+  filter(missing_count > 0) %>% 
+  arrange(desc(missing_count))
+```
+
+The missing data makes sense. Homes without a pool wouldn't have an entry for Pool.QC, likewise with Misc.Feature, Alley, Fence, Fireplace.Qu, etc. Refer to the codebook to understand each variable better.
+
+You can also diagnose the numeric values:
+
+```{r}
+diagnose_numeric(ames_train)
+```
+
+Here, for example, we see PID is not a predictor or meaningful value:
+
+PID (Nominal): Parcel identification number  - can be used with city web site for parcel review. 
+
+We can also see how many outliers there are in each variable.
+
+Likewise, we can also look at the categorical variables by using the diagnose_category command:
+
+```{r}
+diagnose_category(ames_train)
+
+```
+
+And you can look at only the missing values by:
+
+```{r}
+diagnose_category(ames_train) %>% 
+  filter(is.na(levels))
+```
+
+And you can review the data outliers:
+
+```{r}
+diagnose_outlier(ames_train) %>% 
+  filter(outliers_cnt > 0) 
+```
+
+You can also easily plot the outliers using the plot_outlier() command:
+
+```{r}
+ames_train %>%
+  plot_outlier(area) 
+```
+
+Use the function of the dplyr package and plot_outlier() and diagnose_outlier() to visualize anomaly values of all numeric variables with an outlier ratio of 0.5% or more.:
+
+```{r}
+ames_train %>%
+  plot_outlier(diagnose_outlier(ames_train) %>% 
+                 filter(outliers_ratio >= 0.5) %>% 
+                 select(variables) %>% 
+                 unlist())
+```
+
+Or you can skip all that and get dlookr to output a complete diagnostic report:
+
+```{r}
+ames_train %>%
+  diagnose_report(output_format = "html", output_file = "Diagn.html")
+```
+
+
+***
+#Exploratory Data Analysis
+
+Once you've diagnosed the data quality, the next step is to explore data to understand the data and find scenarios for performing the analysis.
+
+The following is a list of the EDA functions included in the dlookr package.:
+
+* describe() provides descriptive statistics for numerical data.
+* normality() and plot_normality() perform normalization and visualization of numerical data.
+* correlate() and plot_correlate() calculate the correlation coefficient between two numerical data and provide visualization.
+* target_by() defines the target variable and relate() describes the relationship with the variables of interest corresponding to the target variable.
+* plot.relate() visualizes the relationship to the variable of interest corresponding to the destination variable.
+* eda_report() performs an exploratory data analysis and reports the results.
+
+Describe gives summary statistics for each variable. Using dplyr, you can sort and detail them as needed. For example, you can sort by skewness or any other factor:
+
+```{r}
+ames_train %>%
+  describe() %>%
+  select(variable, skewness, mean, p25, p50, p75) %>% 
+  filter(!is.na(skewness)) %>% 
+  arrange(desc(abs(skewness)))
+```
+
+You can report on all variables or select variables and use the group_by() function ...
+
+You can also check the normality of the data with the dlookr normality() test:
+
+```{r}
+ames_train %>%
+  normality() %>%
+  filter(p_value <= 0.01) %>% 
+  arrange(abs(p_value))
+```
+
+Here we run normality on the dataset, show only the results with p-value less than or equal to 0.01 and sort by absolute p-value.
+
+And you can plot the distributions for a visual reference. (You can plot all or select variables.)
+
+```{r}
+plot_normality(ames_train, area, Full.Bath)
+```
+
+Notoice the normality plots automatically show the distribution of the log and sqrt function.
+
+***
+## Bivariate data EDA
+Calculation of correlation coefficient using correlate()
+Correlate() finds the correlation coefficient of all combinations of ames_data numerical variables as follows:
+
+```{r}
+correlate(ames_train)
+```
+
+Then you can plot the correlations with a simple function. (I've only selected a couple of variables here to make the graph easier to read.)
+
+```{r}
+plot_correlate(ames_train, area, price)
+```
+
+***
+##EDA Using Target Variable
+
+You can also perform EDA based on a target variable, which requires creating a target_by class object. target_by() creates a target_by class with an object inheriting data.frame. 
+
+target_by() is similar to group_by() in dplyr which creates grouped_df. The difference is that you specify only one variable.
+
+*This is a bit out of the scope of this demo, but documentation is available on the cran page for dlookr.
+
+***
+Finally, you can also run a single EDA report just as with the data quality diagnosis report. 
+
+```{r}
+ames_train %>%
+  eda_report(target = price)
+```
+
+***
+
+The final tool in dlookr is data transformation. That, too, is a topic for another day.
+
+https://cran.r-project.org/web/packages/dlookr/vignettes/transformation.html
+
+
+
+
